@@ -4,41 +4,31 @@ using System.Windows.Forms;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.Win32;
+using System.IO;
+using System.Text.Json;
 
 namespace MAMAutoPoints
 {
     public class MainForm : Form
     {
-        // Fixed content width for all major sections.
         private const int ContentWidth = 760;
 
-        // --- UI Controls ---
-        // Code box (log)
+        // UI Controls
         private TextBox textBoxLog = null!;
-
-        // Settings controls (General Settings)
         private TextBox textBoxPointsBuffer = null!;
         private CheckBox checkBoxBuyVip = null!;
         private TextBox textBoxNextRun = null!;
-
-        // Totals controls
         private Label labelTotalGB = null!;
         private Label labelCumulativePointsValue = null!;
         private Label labelNextRunCountdown = null!;
-
-        // Cookie controls
         private TextBox textBoxCookieFile = null!;
         private Button buttonBrowseCookie = null!;
         private Button buttonEditCookie = null!;
         private Button buttonCreateCookie = null!;
-
-        // Application Controls buttons
         private Button buttonRun = null!;
         private Button buttonPause = null!;
         private Button buttonExit = null!;
         private Button buttonHelpCookie = null!;
-
-        // Timer & automation fields (fully qualified)
         private System.Windows.Forms.Timer timerCountdown = null!;
         private DateTime? nextRunTime = null;
         private int cumulativePointsSpent = 0;
@@ -46,17 +36,29 @@ namespace MAMAutoPoints
         private bool automationRunning = false;
         private bool paused = false;
 
-        // NotifyIcon for system tray
         private NotifyIcon notifyIcon = null!;
         private bool enableMinimizeToTray = true;
 
-        // --- Layout Containers ---
-        // Container panel for fixed-width content.
-        private Panel panelContent = null!;
-        // Main TableLayoutPanel for grouping sections.
-        private TableLayoutPanel tableLayoutMain = null!;
+        // Toggles
+        private CheckBox checkBoxStartWithWindows = null!;
+        private CheckBox checkBoxMinimizeTray = null!;
+        private CheckBox errorNotificationCheckBox = null!;
+        private bool sendErrorNotifications = false;
 
-        // GroupBoxes for various sections
+        // Config persistence
+        private readonly string _configPath = Path.Combine(Path.GetTempPath(), "MAMAutoPointsConfig.json");
+        private AppConfig _config = new AppConfig();
+        private class AppConfig
+        {
+            public bool SendErrorNotifications { get; set; }
+            public bool StartWithWindows { get; set; }
+            public bool MinimizeToTray { get; set; }
+            public string CookieFilePath { get; set; } = string.Empty;
+        }
+
+        // Layout containers
+        private Panel panelContent = null!;
+        private TableLayoutPanel tableLayoutMain = null!;
         private GroupBox groupBoxUserInfo = null!;
         private GroupBox groupBoxSettings = null!;
         private GroupBox groupBoxTotals = null!;
@@ -64,7 +66,7 @@ namespace MAMAutoPoints
         private GroupBox groupBoxCookieSettings = null!;
         private GroupBox groupBoxAppControls = null!;
 
-        // Additional labels for User Info
+        // User info labels
         private Label labelUserName = null!;
         private Label labelVipExpires = null!;
         private Label labelDownloaded = null!;
@@ -78,7 +80,7 @@ namespace MAMAutoPoints
 
         private void InitializeComponent()
         {
-            // Set form properties.
+            // Form properties
             this.MinimumSize = new Size(875, 750);
             this.Size = new Size(875, 750);
             this.Text = "MAM Auto Points";
@@ -87,7 +89,7 @@ namespace MAMAutoPoints
             this.StartPosition = FormStartPosition.CenterScreen;
             this.AutoScroll = true;
 
-            // Create a container panel for fixed-width content.
+            // Container panel
             panelContent = new Panel
             {
                 Width = ContentWidth,
@@ -96,7 +98,7 @@ namespace MAMAutoPoints
             };
             this.Controls.Add(panelContent);
 
-            // Create the log (code box) with fixed width.
+            // Log textbox
             textBoxLog = new TextBox
             {
                 Multiline = true,
@@ -106,32 +108,31 @@ namespace MAMAutoPoints
                 BackColor = Color.Black,
                 ForeColor = Color.White,
                 Width = ContentWidth,
-                Height = 150
+                Height = 150,
+                Location = new Point(0, 10)
             };
-            textBoxLog.Location = new Point(0, 10);
             panelContent.Controls.Add(textBoxLog);
 
-            // Create the main TableLayoutPanel for settings.
+            // Main layout
             tableLayoutMain = new TableLayoutPanel
             {
                 ColumnCount = 2,
-                RowCount = 4, // Row 0: User Info; Row 1: General Settings & Totals; Row 2: System Settings & Cookie Settings; Row 3: Application Controls.
+                RowCount = 4,
                 AutoSize = true,
                 BackColor = Color.Transparent,
-                Padding = new Padding(0)
+                Padding = new Padding(0),
+                Location = new Point(0, textBoxLog.Bottom + 10),
+                Width = ContentWidth
             };
             tableLayoutMain.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tableLayoutMain.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            // Define rows:
-            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.Absolute, 160)); // User Information row (fixed height)
-            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.AutoSize));        // General Settings & Totals.
-            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.AutoSize));        // System Settings & Cookie Settings.
-            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.AutoSize));        // Application Controls.
-            tableLayoutMain.Width = ContentWidth;
-            tableLayoutMain.Location = new Point(0, textBoxLog.Bottom + 10);
+            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.Absolute, 160));
+            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             panelContent.Controls.Add(tableLayoutMain);
 
-            // --- Row 0: User Information (spanning both columns) ---
+            // Row 0: User Information
             groupBoxUserInfo = new GroupBox
             {
                 Text = "User Information",
@@ -142,8 +143,8 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
-            // Add User Information labels.
-            Label lblUserNameTitle = new Label
+            // Username
+            var lblUserNameTitle = new Label
             {
                 Text = "Username:",
                 Location = new Point(10, 25),
@@ -159,7 +160,8 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightBlue
             };
             groupBoxUserInfo.Controls.Add(labelUserName);
-            Label lblVipExpiresTitle = new Label
+            // VIP Expires
+            var lblVipExpiresTitle = new Label
             {
                 Text = "VIP Expires:",
                 Location = new Point(10, 50),
@@ -175,7 +177,8 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightGreen
             };
             groupBoxUserInfo.Controls.Add(labelVipExpires);
-            Label lblDownloadedTitle = new Label
+            // Downloaded
+            var lblDownloadedTitle = new Label
             {
                 Text = "Downloaded:",
                 Location = new Point(10, 75),
@@ -191,7 +194,8 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightCoral
             };
             groupBoxUserInfo.Controls.Add(labelDownloaded);
-            Label lblUploadedTitle = new Label
+            // Uploaded
+            var lblUploadedTitle = new Label
             {
                 Text = "Uploaded:",
                 Location = new Point(380, 25),
@@ -207,7 +211,8 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightCoral
             };
             groupBoxUserInfo.Controls.Add(labelUploaded);
-            Label lblRatioTitle = new Label
+            // Ratio
+            var lblRatioTitle = new Label
             {
                 Text = "Ratio:",
                 Location = new Point(380, 50),
@@ -223,8 +228,8 @@ namespace MAMAutoPoints
                 ForeColor = Color.Plum
             };
             groupBoxUserInfo.Controls.Add(labelRatio);
-            // Add buttons for Lotto and Donate.
-            Button btnLotto = new Button
+            // Lotto button
+            var btnLotto = new Button
             {
                 Text = "Play MAM Lotto",
                 Size = new Size(140, 30),
@@ -235,11 +240,10 @@ namespace MAMAutoPoints
                 Font = new Font("Segoe UI", 10, FontStyle.Bold)
             };
             btnLotto.Click += (s, e) =>
-            {
                 Process.Start(new ProcessStartInfo("https://www.myanonamouse.net/play_lotto.php") { UseShellExecute = true });
-            };
             groupBoxUserInfo.Controls.Add(btnLotto);
-            Button btnDonate = new Button
+            // Donate button
+            var btnDonate = new Button
             {
                 Text = "Millionaires Club",
                 Size = new Size(160, 30),
@@ -250,15 +254,12 @@ namespace MAMAutoPoints
                 Font = new Font("Segoe UI", 10, FontStyle.Bold)
             };
             btnDonate.Click += (s, e) =>
-            {
                 Process.Start(new ProcessStartInfo("https://www.myanonamouse.net/millionaires/donate.php") { UseShellExecute = true });
-            };
             groupBoxUserInfo.Controls.Add(btnDonate);
             tableLayoutMain.Controls.Add(groupBoxUserInfo, 0, 0);
             tableLayoutMain.SetColumnSpan(groupBoxUserInfo, 2);
 
-            // --- Row 1: General Settings and Totals ---
-            // Left: General Settings GroupBox.
+            // Row 1: General Settings
             groupBoxSettings = new GroupBox
             {
                 Text = "General Settings",
@@ -276,14 +277,14 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightGreen
             };
             groupBoxSettings.Controls.Add(checkBoxBuyVip);
-            Label lblPointsBuffer = new Label
+            var lblPointsBuff = new Label
             {
                 Text = "Points Buffer:",
                 Location = new Point(10, 50),
                 AutoSize = true,
                 ForeColor = Color.LightBlue
             };
-            groupBoxSettings.Controls.Add(lblPointsBuffer);
+            groupBoxSettings.Controls.Add(lblPointsBuff);
             textBoxPointsBuffer = new TextBox
             {
                 Text = "10000",
@@ -293,14 +294,14 @@ namespace MAMAutoPoints
                 ForeColor = Color.White
             };
             groupBoxSettings.Controls.Add(textBoxPointsBuffer);
-            Label lblNextRunDelay = new Label
+            var lblNextRun = new Label
             {
                 Text = "Next Run Delay (hours):",
                 Location = new Point(10, 80),
                 AutoSize = true,
                 ForeColor = Color.Plum
             };
-            groupBoxSettings.Controls.Add(lblNextRunDelay);
+            groupBoxSettings.Controls.Add(lblNextRun);
             textBoxNextRun = new TextBox
             {
                 Text = "12",
@@ -312,7 +313,7 @@ namespace MAMAutoPoints
             groupBoxSettings.Controls.Add(textBoxNextRun);
             tableLayoutMain.Controls.Add(groupBoxSettings, 0, 1);
 
-            // Right: Totals GroupBox.
+            // Row 1: Totals
             groupBoxTotals = new GroupBox
             {
                 Text = "Totals",
@@ -321,13 +322,13 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
-            Label lblTotalGBTitle = new Label
+            var lblTotalGB = new Label
             {
                 Text = "Total GB Bought:",
                 Location = new Point(10, 25),
                 AutoSize = true
             };
-            groupBoxTotals.Controls.Add(lblTotalGBTitle);
+            groupBoxTotals.Controls.Add(lblTotalGB);
             labelTotalGB = new Label
             {
                 Text = "0",
@@ -335,13 +336,13 @@ namespace MAMAutoPoints
                 AutoSize = true
             };
             groupBoxTotals.Controls.Add(labelTotalGB);
-            Label lblCumulativePointsTitle = new Label
+            var lblCum = new Label
             {
                 Text = "Cumulative Points Spent:",
                 Location = new Point(10, 55),
                 AutoSize = true
             };
-            groupBoxTotals.Controls.Add(lblCumulativePointsTitle);
+            groupBoxTotals.Controls.Add(lblCum);
             labelCumulativePointsValue = new Label
             {
                 Text = "0",
@@ -349,13 +350,13 @@ namespace MAMAutoPoints
                 AutoSize = true
             };
             groupBoxTotals.Controls.Add(labelCumulativePointsValue);
-            Label lblNextRunInTitle = new Label
+            var lblNext = new Label
             {
                 Text = "Next Run In:",
                 Location = new Point(10, 85),
                 AutoSize = true
             };
-            groupBoxTotals.Controls.Add(lblNextRunInTitle);
+            groupBoxTotals.Controls.Add(lblNext);
             labelNextRunCountdown = new Label
             {
                 Text = "",
@@ -365,8 +366,7 @@ namespace MAMAutoPoints
             groupBoxTotals.Controls.Add(labelNextRunCountdown);
             tableLayoutMain.Controls.Add(groupBoxTotals, 1, 1);
 
-            // --- Row 2: System Settings and Cookie Settings ---
-            // Left: System Settings GroupBox.
+            // Row 2: System Settings
             groupBoxSystemSettings = new GroupBox
             {
                 Text = "System Settings",
@@ -375,28 +375,36 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
-            CheckBox chkAutoStart = new CheckBox
+            checkBoxStartWithWindows = new CheckBox
             {
                 Text = "Start with Windows",
                 Location = new Point(10, 25),
                 AutoSize = true,
                 ForeColor = Color.LightGreen
             };
-            chkAutoStart.CheckedChanged += (s, e) => { /* AutoStart logic here */ };
-            groupBoxSystemSettings.Controls.Add(chkAutoStart);
-            CheckBox chkMinimizeTray = new CheckBox
+            checkBoxStartWithWindows.CheckedChanged += StartWithWindowsChanged;
+            groupBoxSystemSettings.Controls.Add(checkBoxStartWithWindows);
+            checkBoxMinimizeTray = new CheckBox
             {
                 Text = "Minimize to System Tray",
                 Location = new Point(200, 25),
                 AutoSize = true,
-                Checked = true,
                 ForeColor = Color.LightGreen
             };
-            chkMinimizeTray.CheckedChanged += (s, e) => { /* Minimize-to-tray logic here */ };
-            groupBoxSystemSettings.Controls.Add(chkMinimizeTray);
+            checkBoxMinimizeTray.CheckedChanged += MinimizeTrayChanged;
+            groupBoxSystemSettings.Controls.Add(checkBoxMinimizeTray);
+            errorNotificationCheckBox = new CheckBox
+            {
+                Text = "Enable Error Notifications",
+                Location = new Point(10, 55),
+                AutoSize = true,
+                ForeColor = Color.LightCoral
+            };
+            errorNotificationCheckBox.CheckedChanged += ErrorNotificationChanged;
+            groupBoxSystemSettings.Controls.Add(errorNotificationCheckBox);
             tableLayoutMain.Controls.Add(groupBoxSystemSettings, 0, 2);
 
-            // Right: Cookie Settings GroupBox.
+            // Row 2: Cookie Settings
             groupBoxCookieSettings = new GroupBox
             {
                 Text = "Cookie Settings",
@@ -405,14 +413,14 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
-            Label lblCookieFile = new Label
+            var lblCookie = new Label
             {
                 Text = "Cookies File:",
                 Location = new Point(10, 25),
                 AutoSize = true,
                 ForeColor = Color.Orange
             };
-            groupBoxCookieSettings.Controls.Add(lblCookieFile);
+            groupBoxCookieSettings.Controls.Add(lblCookie);
             textBoxCookieFile = new TextBox
             {
                 Text = "",
@@ -421,6 +429,7 @@ namespace MAMAutoPoints
                 BackColor = Color.Black,
                 ForeColor = Color.White
             };
+            textBoxCookieFile.TextChanged += CookieFilePathChanged;
             groupBoxCookieSettings.Controls.Add(textBoxCookieFile);
             buttonBrowseCookie = new Button
             {
@@ -430,12 +439,11 @@ namespace MAMAutoPoints
                 BackColor = Color.DimGray,
                 ForeColor = Color.White
             };
-            buttonBrowseCookie.Click += (s, e) => {
-                using (OpenFileDialog ofd = new OpenFileDialog { Filter = "Cookie Files (*.cookies)|*.cookies|All Files (*.*)|*.*" })
-                {
-                    if (ofd.ShowDialog() == DialogResult.OK)
-                        textBoxCookieFile.Text = ofd.FileName;
-                }
+            buttonBrowseCookie.Click += (s, e) =>
+            {
+                using var ofd = new OpenFileDialog { Filter = "Cookie Files (*.cookies)|*.cookies|All Files (*.*)|*.*" };
+                if (ofd.ShowDialog() == DialogResult.OK)
+                    textBoxCookieFile.Text = ofd.FileName;
             };
             groupBoxCookieSettings.Controls.Add(buttonBrowseCookie);
             buttonEditCookie = new Button
@@ -446,7 +454,8 @@ namespace MAMAutoPoints
                 BackColor = Color.DimGray,
                 ForeColor = Color.White
             };
-            buttonEditCookie.Click += (s, e) => {
+            buttonEditCookie.Click += (s, e) =>
+            {
                 try { Process.Start(new ProcessStartInfo(textBoxCookieFile.Text) { UseShellExecute = true }); }
                 catch (Exception ex) { MessageBox.Show("Error: " + ex.Message); }
             };
@@ -459,26 +468,23 @@ namespace MAMAutoPoints
                 BackColor = Color.DimGray,
                 ForeColor = Color.White
             };
-            buttonCreateCookie.Click += (s, e) => {
-                string uniqueId = Microsoft.VisualBasic.Interaction.InputBox("Enter your security string:", "Create Cookie", "");
-                if (!string.IsNullOrEmpty(uniqueId))
+            buttonCreateCookie.Click += (s, e) =>
+            {
+                var id = Microsoft.VisualBasic.Interaction.InputBox("Enter security string:", "Create Cookie", "");
+                if (!string.IsNullOrEmpty(id))
                 {
-                    using (SaveFileDialog sfd = new SaveFileDialog())
+                    using var sfd = new SaveFileDialog { Filter = "Cookie Files (*.cookies)|*.cookies|All Files (*.*)|*.*", FileName = "MAM.cookies" };
+                    if (sfd.ShowDialog() == DialogResult.OK)
                     {
-                        sfd.Filter = "Cookie Files (*.cookies)|*.cookies|All Files (*.*)|*.*";
-                        sfd.FileName = "MAM.cookies";
-                        if (sfd.ShowDialog() == DialogResult.OK)
-                        {
-                            System.IO.File.WriteAllText(sfd.FileName, uniqueId);
-                            textBoxCookieFile.Text = sfd.FileName;
-                        }
+                        File.WriteAllText(sfd.FileName, id);
+                        textBoxCookieFile.Text = sfd.FileName;
                     }
                 }
             };
             groupBoxCookieSettings.Controls.Add(buttonCreateCookie);
             tableLayoutMain.Controls.Add(groupBoxCookieSettings, 1, 2);
 
-            // --- Row 3: Application Controls ---
+            // Row 3: Application Controls
             groupBoxAppControls = new GroupBox
             {
                 Text = "Application Controls",
@@ -496,8 +502,50 @@ namespace MAMAutoPoints
                 BackColor = Color.DimGray,
                 ForeColor = Color.White
             };
-            buttonRun.Click += (s, e) => { /* Run script logic */ };
+            buttonRun.Click += (s, e) =>
+            {
+                if (paused)
+                {
+                    paused = false;
+                    buttonPause.Text = "Pause";
+                    AppendLog("Resuming automation.");
+                }
+                if (!int.TryParse(textBoxPointsBuffer.Text, out int pb))
+                {
+                    MessageBox.Show("Invalid Points Buffer.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                if (!int.TryParse(textBoxNextRun.Text, out int nr))
+                {
+                    MessageBox.Show("Invalid Next Run Delay.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                bool vip = checkBoxBuyVip.Checked;
+                string cf = textBoxCookieFile.Text;
+                if (automationRunning) { AppendLog("Already running."); return; }
+                Task.Run(async () =>
+                {
+                    automationRunning = true;
+                    try
+                    {
+                        await AutomationService.RunAutomationAsync(cf, pb, vip, nr,
+                            AppendLog, UpdateUserInformation, UpdateTotals);
+                    }
+                    catch (Exception ex)
+                    {
+                        AppendLog("Error: " + ex.Message);
+                        if (sendErrorNotifications)
+                            notifyIcon.ShowBalloonTip(5000, "MAM Auto Points – Error", ex.Message, ToolTipIcon.Error);
+                    }
+                    finally
+                    {
+                        automationRunning = false;
+                        nextRunTime = DateTime.Now.AddHours(nr);
+                    }
+                });
+            };
             groupBoxAppControls.Controls.Add(buttonRun);
+
             buttonPause = new Button
             {
                 Text = "Pause",
@@ -507,8 +555,14 @@ namespace MAMAutoPoints
                 BackColor = Color.DimGray,
                 ForeColor = Color.White
             };
-            buttonPause.Click += (s, e) => { /* Pause logic */ };
+            buttonPause.Click += (s, e) =>
+            {
+                paused = !paused;
+                buttonPause.Text = paused ? "Resume" : "Pause";
+                AppendLog(paused ? "Paused." : "Resumed.");
+            };
             groupBoxAppControls.Controls.Add(buttonPause);
+
             buttonExit = new Button
             {
                 Text = "Exit",
@@ -518,8 +572,9 @@ namespace MAMAutoPoints
                 BackColor = Color.DimGray,
                 ForeColor = Color.White
             };
-            buttonExit.Click += (s, e) => { this.Close(); };
+            buttonExit.Click += (s, e) => this.Close();
             groupBoxAppControls.Controls.Add(buttonExit);
+
             buttonHelpCookie = new Button
             {
                 Text = "Instructions",
@@ -529,17 +584,17 @@ namespace MAMAutoPoints
                 BackColor = Color.DimGray,
                 ForeColor = Color.White
             };
-            buttonHelpCookie.Click += (s, e) => {
+            buttonHelpCookie.Click += (s, e) =>
                 MessageBox.Show("Instructions:\n1. ...\n2. ...", "Instructions");
-            };
             groupBoxAppControls.Controls.Add(buttonHelpCookie);
+
             tableLayoutMain.Controls.Add(groupBoxAppControls, 0, 3);
             tableLayoutMain.SetColumnSpan(groupBoxAppControls, 2);
 
-            // Center the container panel.
+            // Center content
             CenterContent();
 
-            // Setup system tray NotifyIcon.
+            // Tray icon
             notifyIcon = new NotifyIcon
             {
                 Icon = SystemIcons.Application,
@@ -548,50 +603,44 @@ namespace MAMAutoPoints
             };
             var trayMenu = new ContextMenuStrip();
             trayMenu.Items.Add("Show", null, (s, e) => { this.Show(); this.WindowState = FormWindowState.Normal; });
-            trayMenu.Items.Add("Exit", null, (s, e) => { Application.Exit(); });
+            trayMenu.Items.Add("Exit", null, (s, e) => Application.Exit());
             notifyIcon.ContextMenuStrip = trayMenu;
             notifyIcon.DoubleClick += (s, e) => { this.Show(); this.WindowState = FormWindowState.Normal; };
 
-            // Setup timer for automation countdown using System.Windows.Forms.Timer.
+            // Timer
             timerCountdown = new System.Windows.Forms.Timer { Interval = 1000 };
-            timerCountdown.Tick += (s, e) =>
-            {
-                if (nextRunTime.HasValue)
-                {
-                    TimeSpan remaining = nextRunTime.Value - DateTime.Now;
-                    labelNextRunCountdown.Text = remaining.TotalSeconds > 0 ?
-                        string.Format("{0:D2}:{1:D2}:{2:D2}", remaining.Hours, remaining.Minutes, remaining.Seconds) :
-                        "Ready";
-                    if (remaining.TotalSeconds <= 0 && !automationRunning)
-                    {
-                        nextRunTime = null;
-                        buttonRun.PerformClick();
-                    }
-                }
-                else
-                {
-                    labelNextRunCountdown.Text = "";
-                }
-            };
+            timerCountdown.Tick += TimerCountdown_Tick;
             timerCountdown.Start();
+
+            // Load config
+            LoadConfig();
+        }
+
+        private void UpdateUserInformation(AutomationService.UserSummary summary)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action<AutomationService.UserSummary>(UpdateUserInformation), summary);
+                return;
+            }
+            labelUserName.Text = summary.Username;
+            labelVipExpires.Text = summary.VipExpires;
+            labelDownloaded.Text = summary.Downloaded;
+            labelUploaded.Text = summary.Uploaded;
+            labelRatio.Text = summary.Ratio;
+        }
+
+        private void CookieFilePathChanged(object? sender, EventArgs e)
+        {
+            _config.CookieFilePath = textBoxCookieFile.Text;
+            SaveConfig();
+            AppendLog("Cookie file path saved: " + textBoxCookieFile.Text);
         }
 
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            // Ensure panelContent is not null.
-            if (panelContent == null)
-            {
-                panelContent = new Panel
-                {
-                    Width = ContentWidth,
-                    AutoSize = true,
-                    BackColor = Color.Transparent
-                };
-                this.Controls.Add(panelContent);
-            }
             CenterContent();
-            // Set form's client width based on content width plus padding.
             this.ClientSize = new Size(ContentWidth + 20, this.ClientSize.Height);
         }
 
@@ -599,22 +648,140 @@ namespace MAMAutoPoints
         {
             base.OnResize(e);
             CenterContent();
-            if (this.WindowState == FormWindowState.Minimized && enableMinimizeToTray)
+            if (WindowState == FormWindowState.Minimized && enableMinimizeToTray)
             {
-                this.Hide();
+                Hide();
                 notifyIcon.Visible = true;
-                notifyIcon.ShowBalloonTip(3000, "MAM Auto Points", "Application minimized to tray.", ToolTipIcon.Info);
+                notifyIcon.ShowBalloonTip(3000, "MAM Auto Points", "Minimized to tray.", ToolTipIcon.Info);
             }
         }
 
         private void CenterContent()
         {
-            // Center the container panel horizontally.
             int leftOffset = (this.ClientSize.Width - ContentWidth) / 2;
             if (panelContent != null)
-            {
                 panelContent.Left = leftOffset;
+        }
+
+        private void AppendLog(string message)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action<string>(AppendLog), message);
+                return;
             }
+            textBoxLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+        }
+
+        private void UpdateTotals(int gbBought, int pointsSpent)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action<int, int>(UpdateTotals), gbBought, pointsSpent);
+                return;
+            }
+            cumulativeUploadGB += gbBought;
+            cumulativePointsSpent += pointsSpent;
+            labelTotalGB.Text = cumulativeUploadGB.ToString();
+            labelCumulativePointsValue.Text = cumulativePointsSpent.ToString();
+        }
+
+        private void StartWithWindowsChanged(object? sender, EventArgs e)
+        {
+            bool enable = checkBoxStartWithWindows.Checked;
+            try
+            {
+                using var rk = Registry.CurrentUser.OpenSubKey(
+                    "Software\\Microsoft\\Windows\\CurrentVersion\\Run", true);
+                if (enable)
+                    rk.SetValue("MAMAutoPoints", Application.ExecutablePath);
+                else
+                    rk.DeleteValue("MAMAutoPoints", false);
+
+                _config.StartWithWindows = enable;
+                SaveConfig();
+                AppendLog("Start with Windows " + (enable ? "enabled." : "disabled."));
+            }
+            catch (Exception ex)
+            {
+                AppendLog("Failed to update startup setting: " + ex.Message);
+            }
+        }
+
+        private void MinimizeTrayChanged(object? sender, EventArgs e)
+        {
+            enableMinimizeToTray = checkBoxMinimizeTray.Checked;
+            _config.MinimizeToTray = enableMinimizeToTray;
+            SaveConfig();
+            AppendLog("Minimize to tray " + (enableMinimizeToTray ? "enabled." : "disabled."));
+        }
+
+        private void ErrorNotificationChanged(object? sender, EventArgs e)
+        {
+            sendErrorNotifications = errorNotificationCheckBox.Checked;
+            AppendLog("Error notifications " + (sendErrorNotifications ? "enabled." : "disabled."));
+            SaveConfig();
+        }
+
+        private void LoadConfig()
+        {
+            try
+            {
+                if (File.Exists(_configPath))
+                {
+                    var json = File.ReadAllText(_configPath);
+                    var cfg = JsonSerializer.Deserialize<AppConfig>(json);
+                    if (cfg != null) _config = cfg;
+                }
+            }
+            catch { }
+
+            // Restore cookie path
+            textBoxCookieFile.TextChanged -= CookieFilePathChanged;
+            textBoxCookieFile.Text = _config.CookieFilePath;
+            textBoxCookieFile.TextChanged += CookieFilePathChanged;
+
+            // Restore toggles
+            errorNotificationCheckBox.CheckedChanged -= ErrorNotificationChanged;
+            sendErrorNotifications = _config.SendErrorNotifications;
+            errorNotificationCheckBox.Checked = sendErrorNotifications;
+            errorNotificationCheckBox.CheckedChanged += ErrorNotificationChanged;
+
+            checkBoxStartWithWindows.CheckedChanged -= StartWithWindowsChanged;
+            checkBoxStartWithWindows.Checked = _config.StartWithWindows;
+            checkBoxStartWithWindows.CheckedChanged += StartWithWindowsChanged;
+
+            checkBoxMinimizeTray.CheckedChanged -= MinimizeTrayChanged;
+            checkBoxMinimizeTray.Checked = _config.MinimizeToTray;
+            enableMinimizeToTray = _config.MinimizeToTray;
+            checkBoxMinimizeTray.CheckedChanged += MinimizeTrayChanged;
+        }
+
+        private void SaveConfig()
+        {
+            try
+            {
+                _config.SendErrorNotifications = sendErrorNotifications;
+                _config.StartWithWindows = checkBoxStartWithWindows.Checked;
+                _config.MinimizeToTray = checkBoxMinimizeTray.Checked;
+                _config.CookieFilePath = textBoxCookieFile.Text;
+                var json = JsonSerializer.Serialize(_config);
+                File.WriteAllText(_configPath, json);
+            }
+            catch { }
+        }
+
+        private void TimerCountdown_Tick(object? sender, EventArgs e)
+        {
+            if (nextRunTime.HasValue)
+            {
+                var rem = nextRunTime.Value - DateTime.Now;
+                labelNextRunCountdown.Text = rem.TotalSeconds > 0
+                    ? $"{rem.Hours:D2}:{rem.Minutes:D2}:{rem.Seconds:D2}" : "Ready";
+                if (rem.TotalSeconds <= 0 && !automationRunning)
+                    buttonRun.PerformClick();
+            }
+            else labelNextRunCountdown.Text = "";
         }
     }
 }
