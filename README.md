@@ -71,58 +71,13 @@ Click **"Run Script"** to start the automation process. The log output will disp
 
 ## Release Notes
 
-### v1.0
+### v2.1
+- **Added Play LOTTO Button**
+- **Added Millionares Club Button**
+- **Unified Fixed-Width Layout**
+- **Added system error notification on failure to run**
+- **Added Save States for Settings and Cookie**
 
-- **Removed Unnecessary References:**  
-  Private keys and hard-coded folder dependencies have been eliminated.
 
-- **Default Settings:**  
-  - Points Buffer is set to 10000.
-  - Next Run Delay is set to 12 hours.
 
-- **UI Improvements:**  
-  - Left-aligned, uniformly sized input boxes.
-  - The file selection button is now labeled **"Select File"** and positioned beside the Cookies File textbox.
 
-- **Logging Enhancements:**  
-  - Non-essential log messages (like raw API responses) have been removed.
-  - A final summary is provided that shows the VIP purchase status and total GB purchased.
-
-- **VIP Purchase Logic Update:**  
-  VIP is only purchased if the remaining VIP period is 83 days or less, ensuring a 3-day buffer before reaching 90 days.
-
----
-
-### v1.1 Changelog
-
-- **Default Settings:**  
-  - Points Buffer remains set to a default value of `10000`.
-  - Next Run Delay remains set to a default value of `12` hours.
-
-- **Improved UI Layout:**  
-  - Aligned the settings controls (Points Buffer, Next Run Delay, and Cookies File) to the left for a cleaner, more professional look.
-  - Standardized the width of the data entry boxes by setting the Cookies File textbox to the same width as the other inputs.
-
-- **Enhanced File Selection:**  
-  - Moved the Browse button to sit directly beside the Cookies File textbox.
-  - Renamed the Browse button to **"Select File"** for clarity.
-
-- **Cleaned Up Log Output:**  
-  - Removed non-essential logging (e.g., seed bonus fetch details and raw API response data).
-  - Streamlined per-GB log messages to only display purchase actions.
-  - Added a final summary output that clearly states whether a VIP purchase occurred and the total number of GB purchased.
-
-- **VIP Purchase Logic Updated:**  
-  - Added a 3-day buffer so that VIP is only purchased if the current VIP period is 83 days or less.
-  - VIP is only purchased when **Buy Max VIP** is enabled.
-
----
-
-## Contributing
-
-Contributions are welcome! To contribute:
-
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix:
-   ```bash
-   git checkout -b feature/YourFeatureName
