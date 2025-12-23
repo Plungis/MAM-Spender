@@ -88,11 +88,11 @@ namespace MAMAutoPoints
                 if(50 > totalUploadGB)
                 {
                     // Can no longer purchase less than 50GiB via scripts.
-                    log("Cannot purchase more than 50 GiB of upload - aborting");
+                    log("Not enough points to purchase >50GiB of upload - aborting");
                 }
                 else
                 {
-                    log($"{points} > {uploadRequired} - purchasing {totalUploadGB} GiB of upload");
+                    log($"{points} points available. Purchasing {totalUploadGB} GiB of upload");
                     string url = ApiHelper.GetPointsUrl(totalUploadGB);
                     await ApiHelper.SendCurlRequestAsync(url, cookies);
                     await Task.Delay(1000);
