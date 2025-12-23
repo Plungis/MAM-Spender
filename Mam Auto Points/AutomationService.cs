@@ -83,39 +83,36 @@ namespace MAMAutoPoints
                         log("VIP purchase not required; current VIP period exceeds threshold (83 days).");
                     }
                 }
-
-                int totalUploadGB = 0;
-                int[] gbValues = new int[] { 100, 50 };
-                foreach (int gb in gbValues)
+                // intentional integer math, round down.
+                int totalUploadGB = ((points - pointsBuffer) / 500);
+                if(50 > totalUploadGB)
                 {
-                    int uploadRequired = gb * 500 + pointsBuffer;
-                    while (points > uploadRequired)
+                    // Can no longer purchase less than 50GiB via scripts.
+                    log("Cannot purchase more than 50 GiB of upload - aborting");
+                }
+                else
+                {
+                    log($"{points} > {uploadRequired} - purchasing {totalUploadGB} GiB of upload");
+                    string url = ApiHelper.GetPointsUrl(totalUploadGB);
+                    await ApiHelper.SendCurlRequestAsync(url, cookies);
+                    await Task.Delay(1000);
+                    int newPoints = await ApiHelper.GetSeedBonusAsync(cookies, mamUid);
+                    log($"After purchase, points: {newPoints}");
+                    if (newPoints < points)
                     {
-                        log($"{points} > {uploadRequired} - purchasing {gb} GB of upload");
-                        string timestamp = ((long)(DateTime.Now - new DateTime(1970, 1, 1)).TotalMilliseconds).ToString();
-                        string url = ApiHelper.GetPointsUrl(gb, timestamp);
-                        await ApiHelper.SendCurlRequestAsync(url, cookies);
-                        await Task.Delay(1000);
-                        int newPoints = await ApiHelper.GetSeedBonusAsync(cookies, mamUid);
-                        log($"After purchase, points: {newPoints}");
-                        if (newPoints < points)
-                        {
-                            points = newPoints;
-                            totalUploadGB += gb;
-                        }
-                        else
-                        {
-                            log("Purchase did not reduce points - aborting.");
-                            return;
-                        }
+                        points = newPoints;
+                    }
+                    else
+                    {
+                        log("Purchase did not reduce points - aborting.");
+                        return;
                     }
                 }
-
                 int runPointsSpent = initialPoints - points;
                 updateTotals(totalUploadGB, runPointsSpent);
                 log("=== Summary ===");
                 log($"VIP Purchase: {(vipPurchased ? "Yes" : "No")}");
-                log($"Total Upload GB Purchased (this run): {totalUploadGB} GB");
+                log($"Total Upload GB Purchased (this run): {totalUploadGB} GiB");
                 log($"Points Spent This Run: {runPointsSpent}");
             }
             catch (Exception ex)
