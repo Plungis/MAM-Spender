@@ -85,7 +85,7 @@ namespace MAMAutoPoints
                 }
 
                 int totalUploadGB = 0;
-                int[] gbValues = new int[] { 100, 20, 5, 1 };
+                int[] gbValues = new int[] { 100, 50 };
                 foreach (int gb in gbValues)
                 {
                     int uploadRequired = gb * 500 + pointsBuffer;
