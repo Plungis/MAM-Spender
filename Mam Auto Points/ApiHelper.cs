@@ -126,9 +126,9 @@ namespace MAMAutoPoints
             }
         }
 
-        public static string GetPointsUrl(int gb, string timestamp)
+        public static string GetPointsUrl(int gb)
         {
-            return POINTS_URL + gb.ToString() + "&_=" + timestamp;
+            return POINTS_URL + gb.ToString();
         }
 
         public static string GetVipUrl(string timestamp)
