@@ -46,14 +46,27 @@ namespace MAMAutoPoints
         private bool sendErrorNotifications = false;
 
         // Config persistence
-        private readonly string _configPath = Path.Combine(Path.GetTempPath(), "MAMAutoPointsConfig.json");
+        private readonly string _configPath;
         private AppConfig _config = new AppConfig();
+
         private class AppConfig
         {
             public bool SendErrorNotifications { get; set; }
             public bool StartWithWindows { get; set; }
             public bool MinimizeToTray { get; set; }
             public string CookieFilePath { get; set; } = string.Empty;
+
+            // Persist these settings too
+            public bool BuyVip { get; set; } = true;
+            public int PointsBuffer { get; set; } = 10000;
+            public int NextRunHours { get; set; } = 12;
+
+            // Persist totals across sessions
+            public int CumulativeUploadGB { get; set; }
+            public int CumulativePointsSpent { get; set; }
+
+            // Persist next scheduled run across sessions
+            public DateTime? NextRunTimeLocal { get; set; }
         }
 
         // Layout containers
@@ -75,6 +88,12 @@ namespace MAMAutoPoints
 
         public MainForm()
         {
+            var baseDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MAMAutoPoints");
+            Directory.CreateDirectory(baseDir);
+            _configPath = Path.Combine(baseDir, "MAMAutoPointsConfig.json");
+
             InitializeComponent();
         }
 
@@ -276,7 +295,9 @@ namespace MAMAutoPoints
                 Checked = true,
                 ForeColor = Color.LightGreen
             };
+            checkBoxBuyVip.CheckedChanged += BuyVipChanged;
             groupBoxSettings.Controls.Add(checkBoxBuyVip);
+
             var lblPointsBuff = new Label
             {
                 Text = "Points Buffer:",
@@ -293,7 +314,9 @@ namespace MAMAutoPoints
                 BackColor = Color.Black,
                 ForeColor = Color.White
             };
+            textBoxPointsBuffer.TextChanged += PointsBufferChanged;
             groupBoxSettings.Controls.Add(textBoxPointsBuffer);
+
             var lblNextRun = new Label
             {
                 Text = "Next Run Delay (hours):",
@@ -310,6 +333,7 @@ namespace MAMAutoPoints
                 BackColor = Color.Black,
                 ForeColor = Color.White
             };
+            textBoxNextRun.TextChanged += NextRunHoursChanged;
             groupBoxSettings.Controls.Add(textBoxNextRun);
             tableLayoutMain.Controls.Add(groupBoxSettings, 0, 1);
 
@@ -541,6 +565,8 @@ namespace MAMAutoPoints
                     {
                         automationRunning = false;
                         nextRunTime = DateTime.Now.AddHours(nr);
+                        _config.NextRunTimeLocal = nextRunTime;
+                        SaveConfig();
                     }
                 });
             };
@@ -585,7 +611,38 @@ namespace MAMAutoPoints
                 ForeColor = Color.White
             };
             buttonHelpCookie.Click += (s, e) =>
-                MessageBox.Show("Instructions:\n1. ...\n2. ...", "Instructions");
+                MessageBox.Show("This tool automatically spends your MyAnonamouse (MAM) bonus points\r\n" +
+"on upload credit and optionally renews VIP when needed.\r\n\r\n" +
+
+"STEP 1: CREATE YOUR COOKIE FILE\r\n" +
+"• Log in to https://www.myanonamouse.net\r\n" +
+"• Open browser dev tools (F12)\r\n" +
+"• Find the cookie named: mam_id\r\n" +
+"• Copy ONLY the cookie value\r\n\r\n" +
+
+"Use \"Create my Cookie!\" and paste the value.\r\n" +
+"Keep this file private.\r\n\r\n" +
+
+"STEP 2: SELECT THE COOKIE FILE\r\n" +
+"• Select your .cookies file\r\n" +
+"• Or paste the path manually\r\n\r\n" +
+
+"STEP 3: CONFIGURE SETTINGS\r\n" +
+"• Buy Max VIP: Auto-renews VIP when ≤ 83 days remain\r\n" +
+"• Points Buffer: Points never spent\r\n" +
+"• Next Run Delay: Auto-run interval in hours\r\n\r\n" +
+
+"STEP 4: RUN\r\n" +
+"• Click Run Script\r\n" +
+"• Script validates session, buys VIP if needed,\r\n" +
+"  and spends remaining points on upload credit\r\n\r\n" +
+
+"NOTES\r\n" +
+"• Minimum script purchase is 50 GiB\r\n" +
+"• Purchases are irreversible\r\n" +
+"• Points are rounded DOWN\r\n\r\n" +
+
+"This tool is NOT affiliated with MyAnonamouse.");
             groupBoxAppControls.Controls.Add(buttonHelpCookie);
 
             tableLayoutMain.Controls.Add(groupBoxAppControls, 0, 3);
@@ -637,6 +694,30 @@ namespace MAMAutoPoints
             AppendLog("Cookie file path saved: " + textBoxCookieFile.Text);
         }
 
+        private void PointsBufferChanged(object? sender, EventArgs e)
+        {
+            if (int.TryParse(textBoxPointsBuffer.Text, out int pb))
+            {
+                _config.PointsBuffer = pb;
+                SaveConfig();
+            }
+        }
+
+        private void NextRunHoursChanged(object? sender, EventArgs e)
+        {
+            if (int.TryParse(textBoxNextRun.Text, out int nr))
+            {
+                _config.NextRunHours = nr;
+                SaveConfig();
+            }
+        }
+
+        private void BuyVipChanged(object? sender, EventArgs e)
+        {
+            _config.BuyVip = checkBoxBuyVip.Checked;
+            SaveConfig();
+        }
+
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
@@ -682,8 +763,13 @@ namespace MAMAutoPoints
             }
             cumulativeUploadGB += gbBought;
             cumulativePointsSpent += pointsSpent;
+
             labelTotalGB.Text = cumulativeUploadGB.ToString();
             labelCumulativePointsValue.Text = cumulativePointsSpent.ToString();
+
+            _config.CumulativeUploadGB = cumulativeUploadGB;
+            _config.CumulativePointsSpent = cumulativePointsSpent;
+            SaveConfig();
         }
 
         private void StartWithWindowsChanged(object? sender, EventArgs e)
@@ -719,6 +805,7 @@ namespace MAMAutoPoints
         private void ErrorNotificationChanged(object? sender, EventArgs e)
         {
             sendErrorNotifications = errorNotificationCheckBox.Checked;
+            _config.SendErrorNotifications = sendErrorNotifications;
             AppendLog("Error notifications " + (sendErrorNotifications ? "enabled." : "disabled."));
             SaveConfig();
         }
@@ -736,10 +823,32 @@ namespace MAMAutoPoints
             }
             catch { }
 
+            // Restore totals
+            cumulativeUploadGB = _config.CumulativeUploadGB;
+            cumulativePointsSpent = _config.CumulativePointsSpent;
+            labelTotalGB.Text = cumulativeUploadGB.ToString();
+            labelCumulativePointsValue.Text = cumulativePointsSpent.ToString();
+
+            // Restore next run time
+            nextRunTime = _config.NextRunTimeLocal;
+
             // Restore cookie path
             textBoxCookieFile.TextChanged -= CookieFilePathChanged;
             textBoxCookieFile.Text = _config.CookieFilePath;
             textBoxCookieFile.TextChanged += CookieFilePathChanged;
+
+            // Restore general settings
+            checkBoxBuyVip.CheckedChanged -= BuyVipChanged;
+            checkBoxBuyVip.Checked = _config.BuyVip;
+            checkBoxBuyVip.CheckedChanged += BuyVipChanged;
+
+            textBoxPointsBuffer.TextChanged -= PointsBufferChanged;
+            textBoxPointsBuffer.Text = _config.PointsBuffer.ToString();
+            textBoxPointsBuffer.TextChanged += PointsBufferChanged;
+
+            textBoxNextRun.TextChanged -= NextRunHoursChanged;
+            textBoxNextRun.Text = _config.NextRunHours.ToString();
+            textBoxNextRun.TextChanged += NextRunHoursChanged;
 
             // Restore toggles
             errorNotificationCheckBox.CheckedChanged -= ErrorNotificationChanged;
@@ -765,6 +874,19 @@ namespace MAMAutoPoints
                 _config.StartWithWindows = checkBoxStartWithWindows.Checked;
                 _config.MinimizeToTray = checkBoxMinimizeTray.Checked;
                 _config.CookieFilePath = textBoxCookieFile.Text;
+
+                _config.BuyVip = checkBoxBuyVip.Checked;
+
+                if (int.TryParse(textBoxPointsBuffer.Text, out int pb))
+                    _config.PointsBuffer = pb;
+
+                if (int.TryParse(textBoxNextRun.Text, out int nr))
+                    _config.NextRunHours = nr;
+
+                _config.CumulativeUploadGB = cumulativeUploadGB;
+                _config.CumulativePointsSpent = cumulativePointsSpent;
+                _config.NextRunTimeLocal = nextRunTime;
+
                 var json = JsonSerializer.Serialize(_config);
                 File.WriteAllText(_configPath, json);
             }
@@ -776,12 +898,24 @@ namespace MAMAutoPoints
             if (nextRunTime.HasValue)
             {
                 var rem = nextRunTime.Value - DateTime.Now;
-                labelNextRunCountdown.Text = rem.TotalSeconds > 0
-                    ? $"{rem.Hours:D2}:{rem.Minutes:D2}:{rem.Seconds:D2}" : "Ready";
+
+                if (rem.TotalSeconds > 0)
+                {
+                    int totalHours = (int)Math.Floor(rem.TotalHours);
+                    labelNextRunCountdown.Text = $"{totalHours:D2}:{rem.Minutes:D2}:{rem.Seconds:D2}";
+                }
+                else
+                {
+                    labelNextRunCountdown.Text = "Ready";
+                }
+
                 if (rem.TotalSeconds <= 0 && !automationRunning)
                     buttonRun.PerformClick();
             }
-            else labelNextRunCountdown.Text = "";
+            else
+            {
+                labelNextRunCountdown.Text = "";
+            }
         }
     }
 }
