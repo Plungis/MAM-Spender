@@ -12,6 +12,7 @@ namespace MAMAutoPoints
     public class MainForm : Form
     {
         private const int ContentWidth = 760;
+        private const string APP_VERSION = "2.2";
 
         // UI Controls
         private TextBox textBoxLog = null!;
@@ -67,7 +68,12 @@ namespace MAMAutoPoints
 
             // Persist next scheduled run across sessions
             public DateTime? NextRunTimeLocal { get; set; }
+
+            // Update notification tracking
+            public string LastNotifiedVersion { get; set; } = "";
         }
+
+        private const int POINTS_PER_GB = 1000;
 
         // Layout containers
         private Panel panelContent = null!;
@@ -102,7 +108,7 @@ namespace MAMAutoPoints
             // Form properties
             this.MinimumSize = new Size(875, 750);
             this.Size = new Size(875, 750);
-            this.Text = "MAM Auto Points";
+            this.Text = $"MAM Auto Points v{APP_VERSION}";
             this.BackColor = Color.FromArgb(30, 30, 30);
             this.ForeColor = Color.White;
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -162,6 +168,7 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
+
             // Username
             var lblUserNameTitle = new Label
             {
@@ -171,6 +178,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightBlue
             };
             groupBoxUserInfo.Controls.Add(lblUserNameTitle);
+
             labelUserName = new Label
             {
                 Text = "N/A",
@@ -179,6 +187,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightBlue
             };
             groupBoxUserInfo.Controls.Add(labelUserName);
+
             // VIP Expires
             var lblVipExpiresTitle = new Label
             {
@@ -188,6 +197,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightGreen
             };
             groupBoxUserInfo.Controls.Add(lblVipExpiresTitle);
+
             labelVipExpires = new Label
             {
                 Text = "N/A",
@@ -196,6 +206,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightGreen
             };
             groupBoxUserInfo.Controls.Add(labelVipExpires);
+
             // Downloaded
             var lblDownloadedTitle = new Label
             {
@@ -205,6 +216,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightCoral
             };
             groupBoxUserInfo.Controls.Add(lblDownloadedTitle);
+
             labelDownloaded = new Label
             {
                 Text = "N/A",
@@ -213,6 +225,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightCoral
             };
             groupBoxUserInfo.Controls.Add(labelDownloaded);
+
             // Uploaded
             var lblUploadedTitle = new Label
             {
@@ -222,6 +235,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightCoral
             };
             groupBoxUserInfo.Controls.Add(lblUploadedTitle);
+
             labelUploaded = new Label
             {
                 Text = "N/A",
@@ -230,6 +244,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightCoral
             };
             groupBoxUserInfo.Controls.Add(labelUploaded);
+
             // Ratio
             var lblRatioTitle = new Label
             {
@@ -239,6 +254,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.Plum
             };
             groupBoxUserInfo.Controls.Add(lblRatioTitle);
+
             labelRatio = new Label
             {
                 Text = "N/A",
@@ -247,6 +263,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.Plum
             };
             groupBoxUserInfo.Controls.Add(labelRatio);
+
             // Lotto button
             var btnLotto = new Button
             {
@@ -261,6 +278,7 @@ namespace MAMAutoPoints
             btnLotto.Click += (s, e) =>
                 Process.Start(new ProcessStartInfo("https://www.myanonamouse.net/play_lotto.php") { UseShellExecute = true });
             groupBoxUserInfo.Controls.Add(btnLotto);
+
             // Donate button
             var btnDonate = new Button
             {
@@ -275,6 +293,7 @@ namespace MAMAutoPoints
             btnDonate.Click += (s, e) =>
                 Process.Start(new ProcessStartInfo("https://www.myanonamouse.net/millionaires/donate.php") { UseShellExecute = true });
             groupBoxUserInfo.Controls.Add(btnDonate);
+
             tableLayoutMain.Controls.Add(groupBoxUserInfo, 0, 0);
             tableLayoutMain.SetColumnSpan(groupBoxUserInfo, 2);
 
@@ -287,6 +306,7 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
+
             checkBoxBuyVip = new CheckBox
             {
                 Text = "Buy Max VIP?",
@@ -306,6 +326,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.LightBlue
             };
             groupBoxSettings.Controls.Add(lblPointsBuff);
+
             textBoxPointsBuffer = new TextBox
             {
                 Text = "10000",
@@ -325,6 +346,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.Plum
             };
             groupBoxSettings.Controls.Add(lblNextRun);
+
             textBoxNextRun = new TextBox
             {
                 Text = "12",
@@ -335,6 +357,7 @@ namespace MAMAutoPoints
             };
             textBoxNextRun.TextChanged += NextRunHoursChanged;
             groupBoxSettings.Controls.Add(textBoxNextRun);
+
             tableLayoutMain.Controls.Add(groupBoxSettings, 0, 1);
 
             // Row 1: Totals
@@ -346,6 +369,7 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
+
             var lblTotalGB = new Label
             {
                 Text = "Total GB Bought:",
@@ -353,6 +377,7 @@ namespace MAMAutoPoints
                 AutoSize = true
             };
             groupBoxTotals.Controls.Add(lblTotalGB);
+
             labelTotalGB = new Label
             {
                 Text = "0",
@@ -360,6 +385,7 @@ namespace MAMAutoPoints
                 AutoSize = true
             };
             groupBoxTotals.Controls.Add(labelTotalGB);
+
             var lblCum = new Label
             {
                 Text = "Cumulative Points Spent:",
@@ -367,6 +393,7 @@ namespace MAMAutoPoints
                 AutoSize = true
             };
             groupBoxTotals.Controls.Add(lblCum);
+
             labelCumulativePointsValue = new Label
             {
                 Text = "0",
@@ -374,6 +401,7 @@ namespace MAMAutoPoints
                 AutoSize = true
             };
             groupBoxTotals.Controls.Add(labelCumulativePointsValue);
+
             var lblNext = new Label
             {
                 Text = "Next Run In:",
@@ -381,6 +409,7 @@ namespace MAMAutoPoints
                 AutoSize = true
             };
             groupBoxTotals.Controls.Add(lblNext);
+
             labelNextRunCountdown = new Label
             {
                 Text = "",
@@ -388,6 +417,7 @@ namespace MAMAutoPoints
                 AutoSize = true
             };
             groupBoxTotals.Controls.Add(labelNextRunCountdown);
+
             tableLayoutMain.Controls.Add(groupBoxTotals, 1, 1);
 
             // Row 2: System Settings
@@ -399,6 +429,7 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
+
             checkBoxStartWithWindows = new CheckBox
             {
                 Text = "Start with Windows",
@@ -408,6 +439,7 @@ namespace MAMAutoPoints
             };
             checkBoxStartWithWindows.CheckedChanged += StartWithWindowsChanged;
             groupBoxSystemSettings.Controls.Add(checkBoxStartWithWindows);
+
             checkBoxMinimizeTray = new CheckBox
             {
                 Text = "Minimize to System Tray",
@@ -417,6 +449,7 @@ namespace MAMAutoPoints
             };
             checkBoxMinimizeTray.CheckedChanged += MinimizeTrayChanged;
             groupBoxSystemSettings.Controls.Add(checkBoxMinimizeTray);
+
             errorNotificationCheckBox = new CheckBox
             {
                 Text = "Enable Error Notifications",
@@ -426,6 +459,7 @@ namespace MAMAutoPoints
             };
             errorNotificationCheckBox.CheckedChanged += ErrorNotificationChanged;
             groupBoxSystemSettings.Controls.Add(errorNotificationCheckBox);
+
             tableLayoutMain.Controls.Add(groupBoxSystemSettings, 0, 2);
 
             // Row 2: Cookie Settings
@@ -437,6 +471,7 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
+
             var lblCookie = new Label
             {
                 Text = "Cookies File:",
@@ -445,6 +480,7 @@ namespace MAMAutoPoints
                 ForeColor = Color.Orange
             };
             groupBoxCookieSettings.Controls.Add(lblCookie);
+
             textBoxCookieFile = new TextBox
             {
                 Text = "",
@@ -455,6 +491,7 @@ namespace MAMAutoPoints
             };
             textBoxCookieFile.TextChanged += CookieFilePathChanged;
             groupBoxCookieSettings.Controls.Add(textBoxCookieFile);
+
             buttonBrowseCookie = new Button
             {
                 Text = "Select File",
@@ -470,6 +507,7 @@ namespace MAMAutoPoints
                     textBoxCookieFile.Text = ofd.FileName;
             };
             groupBoxCookieSettings.Controls.Add(buttonBrowseCookie);
+
             buttonEditCookie = new Button
             {
                 Text = "Edit Cookie",
@@ -484,6 +522,7 @@ namespace MAMAutoPoints
                 catch (Exception ex) { MessageBox.Show("Error: " + ex.Message); }
             };
             groupBoxCookieSettings.Controls.Add(buttonEditCookie);
+
             buttonCreateCookie = new Button
             {
                 Text = "Create my Cookie!",
@@ -506,6 +545,7 @@ namespace MAMAutoPoints
                 }
             };
             groupBoxCookieSettings.Controls.Add(buttonCreateCookie);
+
             tableLayoutMain.Controls.Add(groupBoxCookieSettings, 1, 2);
 
             // Row 3: Application Controls
@@ -517,6 +557,7 @@ namespace MAMAutoPoints
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
             };
+
             buttonRun = new Button
             {
                 Text = "Run Script",
@@ -547,6 +588,7 @@ namespace MAMAutoPoints
                 bool vip = checkBoxBuyVip.Checked;
                 string cf = textBoxCookieFile.Text;
                 if (automationRunning) { AppendLog("Already running."); return; }
+
                 Task.Run(async () =>
                 {
                     automationRunning = true;
@@ -671,6 +713,62 @@ namespace MAMAutoPoints
 
             // Load config
             LoadConfig();
+
+            // Update check (run on UI thread after the form is ready)
+            this.Shown += async (s, e) =>
+            {
+                await CheckForUpdatesAsync();
+            };
+        }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            try
+            {
+                using var client = new System.Net.Http.HttpClient();
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("MAMAutoPoints");
+
+                var json = await client.GetStringAsync(
+                    "https://api.github.com/repos/Plungis/MAM-Spender/releases/latest");
+
+                using var doc = JsonDocument.Parse(json);
+                var latestTag = doc.RootElement
+                    .GetProperty("tag_name")
+                    .GetString()?
+                    .TrimStart('v');
+
+                if (string.IsNullOrWhiteSpace(latestTag))
+                    return;
+
+                if (latestTag != APP_VERSION &&
+                    latestTag != _config.LastNotifiedVersion)
+                {
+                    _config.LastNotifiedVersion = latestTag;
+                    SaveConfig();
+
+                    MessageBox.Show(
+                        $"A new version of MAM Auto Points is available!\r\n\r\n" +
+                        $"Current version: {APP_VERSION}\r\n" +
+                        $"Latest version: {latestTag}\r\n\r\n" +
+                        $"Visit GitHub to download the update.",
+                        "Update Available",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+
+                    if (enableMinimizeToTray)
+                    {
+                        notifyIcon.ShowBalloonTip(
+                            6000,
+                            "MAM Auto Points Update",
+                            $"New version {latestTag} available",
+                            ToolTipIcon.Info);
+                    }
+                }
+            }
+            catch
+            {
+                // Intentionally silent: update checks must never crash the app
+            }
         }
 
         private void UpdateUserInformation(AutomationService.UserSummary summary)
@@ -754,13 +852,28 @@ namespace MAMAutoPoints
             textBoxLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
         }
 
-        private void UpdateTotals(int gbBought, int pointsSpent)
+        private void UpdateTotals(int _ignoredGbBought, int pointsSpent)
         {
             if (InvokeRequired)
             {
-                Invoke(new Action<int, int>(UpdateTotals), gbBought, pointsSpent);
+                Invoke(new Action<int, int>(UpdateTotals), _ignoredGbBought, pointsSpent);
                 return;
             }
+
+            if (pointsSpent <= 0)
+            {
+                AppendLog("No points spent this run — totals unchanged.");
+                return;
+            }
+
+            int gbBought = pointsSpent / POINTS_PER_GB;
+
+            if (gbBought <= 0)
+            {
+                AppendLog("Points were spent but resulted in 0 GB — ignoring.");
+                return;
+            }
+
             cumulativeUploadGB += gbBought;
             cumulativePointsSpent += pointsSpent;
 
@@ -770,7 +883,12 @@ namespace MAMAutoPoints
             _config.CumulativeUploadGB = cumulativeUploadGB;
             _config.CumulativePointsSpent = cumulativePointsSpent;
             SaveConfig();
+
+            AppendLog($"Confirmed purchase: {gbBought} GB for {pointsSpent} points.");
         }
+
+
+
 
         private void StartWithWindowsChanged(object? sender, EventArgs e)
         {
@@ -902,7 +1020,8 @@ namespace MAMAutoPoints
                 if (rem.TotalSeconds > 0)
                 {
                     int totalHours = (int)Math.Floor(rem.TotalHours);
-                    labelNextRunCountdown.Text = $"{totalHours:D2}:{rem.Minutes:D2}:{rem.Seconds:D2}";
+                    string hh = totalHours < 10 ? "0" + totalHours.ToString() : totalHours.ToString();
+                    labelNextRunCountdown.Text = $"{hh}:{rem.Minutes:D2}:{rem.Seconds:D2}";
                 }
                 else
                 {
