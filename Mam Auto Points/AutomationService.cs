@@ -17,8 +17,9 @@ namespace MAMAutoPoints
         }
 
         // === MAM HARD RULES ===
-        private const int POINTS_PER_BLOCK = 25000;
-        private const int GB_PER_BLOCK = 50;
+        private const int POINTS_PER_BLOCK = 50000;
+        private const int GB_PER_BLOCK = 100;
+        private const int MIN_POINTS_FOR_PURCHASE = 60100;
 
         // === FREELEECH WEDGE ===
         private const int FL_WEDGE_COST = 50000;
@@ -32,7 +33,8 @@ namespace MAMAutoPoints
             int nextRunHours,
             Action<string> log,
             Action<UserSummary> updateUserInfo,
-            Action<int, int> updateTotals)
+            Action<int, int> updateTotals,
+            Action<int>? updateCurrentPoints = null)
         {
             try
             {
@@ -97,6 +99,7 @@ namespace MAMAutoPoints
                 }
 
                 log($"Current points: {points}");
+                updateCurrentPoints?.Invoke(points);
 
                 bool vipPurchased = false;
 
@@ -185,36 +188,23 @@ namespace MAMAutoPoints
                 // ================= UPLOAD GB =================
                 int actualPurchasedGB = 0;
 
-                int spendablePoints = points - pointsBuffer;
-                int purchasableBlocks = spendablePoints / POINTS_PER_BLOCK;
-
-                if (purchasableBlocks <= 0)
+                if (points < MIN_POINTS_FOR_PURCHASE)
                 {
-                    log("Not enough points to purchase at least 50 GiB of upload - aborting");
+                    log($"Not enough points ({points}). Need at least {MIN_POINTS_FOR_PURCHASE} to purchase {GB_PER_BLOCK} GiB");
                 }
                 else
                 {
-                    int requestedGB = purchasableBlocks * GB_PER_BLOCK;
-                    log($"{points} points available. Purchasing {requestedGB} GiB of upload");
+                    int requestedGB = GB_PER_BLOCK;
+                    log($"{points} points available. Purchasing {requestedGB} GiB of upload for {POINTS_PER_BLOCK} points");
 
                     string url = ApiHelper.GetPointsUrl(requestedGB);
                     await ApiHelper.SendCurlRequestAsync(url, cookies);
 
-                    await Task.Delay(1000);
-
-                    int newPoints = await ApiHelper.GetSeedBonusAsync(cookies, mamUid);
+                    int newPoints = points - POINTS_PER_BLOCK;
                     log($"After purchase, points: {newPoints}");
 
-                    if (newPoints < points)
-                    {
-                        points = newPoints;
-                        actualPurchasedGB = requestedGB;
-                    }
-                    else
-                    {
-                        log("Purchase did not reduce points - aborting.");
-                        return;
-                    }
+                    points = newPoints;
+                    actualPurchasedGB = requestedGB;
                 }
 
                 // ================= TOTALS =================

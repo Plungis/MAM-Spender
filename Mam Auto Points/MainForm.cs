@@ -12,7 +12,7 @@ namespace MAMAutoPoints
     public class MainForm : Form
     {
         private const int ContentWidth = 760;
-        private const string APP_VERSION = "2.2.1";
+        private const string APP_VERSION = "2.4.2wfb";
 
         // UI Controls
         private TextBox textBoxLog = null!;
@@ -60,14 +60,18 @@ namespace MAMAutoPoints
             public string CookieFilePath { get; set; } = string.Empty;
 
             // Persist these settings too
-            public bool BuyVip { get; set; } = true;
+            public bool BuyVip { get; set; } = false;
             public bool BuyFlBeforeGb { get; set; } = false;
             public int PointsBuffer { get; set; } = 10000;
-            public int NextRunHours { get; set; } = 12;
+            public int NextRunDelayMinutes { get; set; } = 15;
 
             // Persist totals across sessions
             public int CumulativeUploadGB { get; set; }
             public int CumulativePointsSpent { get; set; }
+
+            // Last scan tracking for points/min
+            public int LastScanPoints { get; set; }
+            public DateTime? LastScanTime { get; set; }
 
             // Persist next scheduled run across sessions
             public DateTime? NextRunTimeLocal { get; set; }
@@ -76,7 +80,7 @@ namespace MAMAutoPoints
             public string LastNotifiedVersion { get; set; } = "";
         }
 
-        private const int POINTS_PER_GB = 1000;
+
 
         // Layout containers
         private Panel panelContent = null!;
@@ -94,6 +98,8 @@ namespace MAMAutoPoints
         private Label labelDownloaded = null!;
         private Label labelUploaded = null!;
         private Label labelRatio = null!;
+        private Label labelLastScanPoints = null!;
+        private Label labelPointsPerMin = null!;
 
         public MainForm()
         {
@@ -205,7 +211,7 @@ namespace MAMAutoPoints
             };
             tableLayoutMain.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tableLayoutMain.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.Absolute, 160));
+            tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.Absolute, 200));
             tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tableLayoutMain.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -217,7 +223,7 @@ namespace MAMAutoPoints
                 Text = "User Information",
                 AutoSize = false,
                 Width = ContentWidth,
-                Height = 160,
+                Height = 200,
                 Dock = DockStyle.Fill,
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White
@@ -318,12 +324,50 @@ namespace MAMAutoPoints
             };
             groupBoxUserInfo.Controls.Add(labelRatio);
 
+            // Last Scan Points
+            var lblLastScanPointsTitle = new Label
+            {
+                Text = "Last Scan Points:",
+                Location = new Point(380, 75),
+                AutoSize = true,
+                ForeColor = Color.Gold
+            };
+            groupBoxUserInfo.Controls.Add(lblLastScanPointsTitle);
+
+            labelLastScanPoints = new Label
+            {
+                Text = "N/A",
+                Location = new Point(510, 75),
+                AutoSize = true,
+                ForeColor = Color.Gold
+            };
+            groupBoxUserInfo.Controls.Add(labelLastScanPoints);
+
+            // Points/Min
+            var lblPointsPerMinTitle = new Label
+            {
+                Text = "Points/Min:",
+                Location = new Point(380, 100),
+                AutoSize = true,
+                ForeColor = Color.Gold
+            };
+            groupBoxUserInfo.Controls.Add(lblPointsPerMinTitle);
+
+            labelPointsPerMin = new Label
+            {
+                Text = "N/A",
+                Location = new Point(510, 100),
+                AutoSize = true,
+                ForeColor = Color.Gold
+            };
+            groupBoxUserInfo.Controls.Add(labelPointsPerMin);
+
             // Lotto button
             var btnLotto = new Button
             {
                 Text = "Play MAM Lotto",
                 Size = new Size(140, 30),
-                Location = new Point(10, 105),
+                Location = new Point(10, 135),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.CornflowerBlue,
                 ForeColor = Color.White,
@@ -338,7 +382,7 @@ namespace MAMAutoPoints
             {
                 Text = "Millionaires Club",
                 Size = new Size(160, 30),
-                Location = new Point(160, 105),
+                Location = new Point(160, 135),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.CornflowerBlue,
                 ForeColor = Color.White,
@@ -369,7 +413,7 @@ namespace MAMAutoPoints
                 Text = "Buy Max VIP?",
                 Location = new Point(10, 20),
                 AutoSize = true,
-                Checked = true,
+                Checked = false,
                 ForeColor = Color.LightGreen
             };
             checkBoxBuyVip.CheckedChanged += BuyVipChanged;
@@ -416,7 +460,7 @@ namespace MAMAutoPoints
 
             var lblNextRun = new Label
             {
-                Text = "Next Run Delay (hours):",
+                Text = "Next Run Delay (mins):",
                 Location = new Point(10, 115),
                 AutoSize = true,
                 ForeColor = Color.Plum
@@ -425,7 +469,7 @@ namespace MAMAutoPoints
 
             textBoxNextRun = new TextBox
             {
-                Text = "12",
+                Text = "15",
                 Width = 100,
                 Location = new Point(150, 115),
                 BackColor = Color.Black,
@@ -804,11 +848,11 @@ namespace MAMAutoPoints
                     "• Only buys wedges\r\n" +
                     "• Skips upload credit entirely\r\n\r\n" +
 
-                    "Points Buffer:\r\n" +
-                    "• Minimum number of points that will never be spent\r\n\r\n" +
+                    "Points Threshold:\r\n" +
+                    "• Purchase triggers when points reach 60,100 (reserve 10,100)\r\n\r\n" +
 
-                    "Next Run Delay (hours):\r\n" +
-                    "• Time between automatic runs\r\n\r\n" +
+                    "Next Run Delay (mins):\r\n" +
+                    "• Time between automatic runs (minimum: 3 min)\r\n\r\n" +
 
                     "--------------------------------\r\n" +
                     "STEP 4: RUNNING THE SCRIPT\r\n" +
@@ -824,16 +868,16 @@ namespace MAMAutoPoints
                     "1) Validate your session\r\n" +
                     "2) Renew VIP if enabled and needed\r\n" +
                     "3) Buy Freeleech Wedges if enabled\r\n" +
-                    "4) Spend remaining points on upload credit\r\n" +
+                    "4) Purchase 100 GiB upload credit (if 60,100+ points)\r\n" +
                     "5) Schedule the next run automatically\r\n\r\n" +
 
                     "--------------------------------\r\n" +
                     "NOTES & WARNINGS\r\n" +
                     "--------------------------------\r\n" +
 
-                    "• Minimum upload purchase is 50 GiB\r\n" +
+                    "• Minimum upload purchase is 100 GiB (50,000 points)\r\n" +
+                    "• Minimum points threshold: 60,100\r\n" +
                     "• Purchases are irreversible\r\n" +
-                    "• Points are always rounded DOWN\r\n" +
                     "• Freeleech Wedges cost 50,000 points each\r\n" +
                     "• If your IP changes, recreate your cookie\r\n\r\n" +
 
@@ -968,7 +1012,7 @@ namespace MAMAutoPoints
         {
             if (int.TryParse(textBoxNextRun.Text, out int nr))
             {
-                _config.NextRunHours = nr;
+                _config.NextRunDelayMinutes = nr;
                 SaveConfig();
             }
         }
@@ -1043,9 +1087,9 @@ namespace MAMAutoPoints
                 return;
             }
 
-            if (!int.TryParse(textBoxNextRun.Text, out int nr))
+            if (!int.TryParse(textBoxNextRun.Text, out int nr) || nr < 3)
             {
-                MessageBox.Show("Invalid Next Run Delay.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Invalid Next Run Delay. Minimum is 3 minutes.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -1074,7 +1118,8 @@ namespace MAMAutoPoints
                         nr,
                         AppendLog,
                         UpdateUserInformation,
-                        UpdateTotals
+                        UpdateTotals,
+                        OnCurrentPointsUpdated
                     );
                 });
             }
@@ -1090,7 +1135,7 @@ namespace MAMAutoPoints
                 automationRunning = false;
 
                 // Always schedule the next run after *any* run finishes (manual or scheduled)
-                nextRunTime = DateTime.Now.AddHours(nr);
+                nextRunTime = DateTime.Now.AddMinutes(nr);
                 _config.NextRunTimeLocal = nextRunTime;
                 SaveConfig();
 
@@ -1140,6 +1185,47 @@ namespace MAMAutoPoints
             {
                 AppendLog("Totals updated.");
             }
+        }
+
+        private void OnCurrentPointsUpdated(int currentPoints)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action<int>(OnCurrentPointsUpdated), currentPoints);
+                return;
+            }
+
+            if (labelLastScanPoints == null || labelPointsPerMin == null)
+                return;
+
+            labelLastScanPoints.Text = currentPoints.ToString("N0");
+
+            // Calculate points/min
+            if (_config.LastScanPoints > 0 && _config.LastScanTime.HasValue)
+            {
+                int pointsEarned = currentPoints - _config.LastScanPoints;
+                double minsElapsed = (DateTime.Now - _config.LastScanTime.Value).TotalMinutes;
+
+                if (pointsEarned > 0 && minsElapsed >= 1)
+                {
+                    double ppm = pointsEarned / minsElapsed;
+                    labelPointsPerMin.Text = $"{ppm:F1}";
+                    AppendLog($"Points/min: {ppm:F1} ({pointsEarned:N0} pts over {minsElapsed:F0} min)");
+                }
+                else
+                {
+                    labelPointsPerMin.Text = pointsEarned <= 0 ? "0.0" : "N/A";
+                }
+            }
+            else
+            {
+                labelPointsPerMin.Text = "N/A";
+            }
+
+            // Persist as last scan for next comparison
+            _config.LastScanPoints = currentPoints;
+            _config.LastScanTime = DateTime.Now;
+            SaveConfig();
         }
 
         private void StartWithWindowsChanged(object? sender, EventArgs e)
@@ -1203,6 +1289,13 @@ namespace MAMAutoPoints
             if (labelCumulativePointsValue != null)
                 labelCumulativePointsValue.Text = cumulativePointsSpent.ToString();
 
+            // Restore last scan info
+            if (labelLastScanPoints != null)
+                labelLastScanPoints.Text = _config.LastScanPoints > 0
+                    ? _config.LastScanPoints.ToString("N0") : "N/A";
+            if (labelPointsPerMin != null)
+                labelPointsPerMin.Text = "N/A";
+
             // Restore next run time
             nextRunTime = _config.NextRunTimeLocal;
 
@@ -1227,7 +1320,7 @@ namespace MAMAutoPoints
             textBoxPointsBuffer.TextChanged += PointsBufferChanged;
 
             textBoxNextRun.TextChanged -= NextRunHoursChanged;
-            textBoxNextRun.Text = _config.NextRunHours.ToString();
+            textBoxNextRun.Text = _config.NextRunDelayMinutes.ToString();
             textBoxNextRun.TextChanged += NextRunHoursChanged;
 
             // Restore toggles
@@ -1262,7 +1355,7 @@ namespace MAMAutoPoints
                     _config.PointsBuffer = pb;
 
                 if (int.TryParse(textBoxNextRun.Text, out int nr))
-                    _config.NextRunHours = nr;
+                    _config.NextRunDelayMinutes = nr;
 
                 _config.CumulativeUploadGB = cumulativeUploadGB;
                 _config.CumulativePointsSpent = cumulativePointsSpent;

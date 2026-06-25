@@ -70,7 +70,7 @@ namespace MAMAutoPoints
             string mamUid)
         {
             using var client = CreateHttpClient(cookies);
-            var response = await client.GetAsync($"{MAM_API_ENDPOINT}?id={mamUid}");
+            var response = await client.GetAsync($"{MAM_API_ENDPOINT}?uid={mamUid}");
             response.EnsureSuccessStatusCode();
 
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
