@@ -1,0 +1,55 @@
+name: Build EXE on Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish single-file self-contained EXE
+        shell: pwsh
+        run: |
+          dotnet publish "Mam Auto Points/Mam Auto Points.csproj" `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o dist
+
+      - name: List publish output
+        shell: pwsh
+        run: Get-ChildItem -Recurse -File dist | Select-Object Name, Length
+
+      - name: Package dist folder
+        shell: pwsh
+        run: Compress-Archive -Path "dist\*" -DestinationPath "MAM-Auto-Points.zip" -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: MAM-Auto-Points
+          path: |
+            dist
+            MAM-Auto-Points.zip
+
+      - name: Attach EXE to release
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "MAM-Auto-Points.zip" --clobber

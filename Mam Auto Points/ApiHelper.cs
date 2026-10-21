@@ -115,7 +115,16 @@ namespace MAMAutoPoints
             return dict;
         }
 
-        public static string GetPointsUrl(int gb) => POINTS_URL + gb;
+        public static string GetPointsUrl(double gb)
+        {
+            // MAM expects amount param; support 2.5 etc. Use invariant culture, trim trailing .0
+            string amt = gb.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // trim unnecessary decimal if integer
+            if (amt.EndsWith(".0")) amt = amt.Substring(0, amt.Length - 2);
+            return POINTS_URL + amt;
+        }
+        // Backward compat overload
+        public static string GetPointsUrl(int gb) => GetPointsUrl((double)gb);
 
         public static string GetVipUrl(string timestamp) =>
             VIP_URL_TEMPLATE.Replace("{timestamp}", timestamp);

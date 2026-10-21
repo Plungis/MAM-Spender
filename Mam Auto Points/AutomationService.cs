@@ -16,7 +16,41 @@ namespace MAMAutoPoints
             public string Ratio { get; set; } = "N/A";
         }
 
-        // === MAM HARD RULES ===
+        // === UPLOAD GB SLIDER (1 GB .. All I can afford) ===
+        // Kept for backward compat with old configs — maps to slider value
+        public enum PurchaseTier
+        {
+            Gb1_500pts = 0,
+            Gb2_5_1250pts = 1,
+            Gb5_2500pts = 2,
+            Gb20_10000pts = 3,
+            Gb50_25000pts = 4,
+            Gb100_50000pts = 5,
+            Variable_MaxAffordable = 6
+        }
+
+        public static (int cost, double gb) GetTierCostGbPublic(PurchaseTier tier) => GetTierCostGb(tier);
+        private static (int cost, double gb) GetTierCostGb(PurchaseTier tier)
+        {
+            return tier switch
+            {
+                PurchaseTier.Gb1_500pts => (500, 1),
+                PurchaseTier.Gb2_5_1250pts => (1250, 2.5),
+                PurchaseTier.Gb5_2500pts => (2500, 5),
+                PurchaseTier.Gb20_10000pts => (10000, 20),
+                PurchaseTier.Gb50_25000pts => (25000, 50),
+                PurchaseTier.Gb100_50000pts => (50000, 100),
+                PurchaseTier.Variable_MaxAffordable => (0, 0),
+                _ => (50000, 100)
+            };
+        }
+
+        public const int MAX_POINTS_CAP = 99999;
+        public const int MIN_UPLOAD_GB = 1;
+        public const int MAX_UPLOAD_GB = 199; // floor(99999/500)
+        private const int POINTS_PER_GB = 500;
+
+        // Legacy constants for backward compat
         private const int POINTS_PER_BLOCK = 50000;
         private const int GB_PER_BLOCK = 100;
         private const int MIN_POINTS_FOR_PURCHASE = 60100;
@@ -33,8 +67,11 @@ namespace MAMAutoPoints
             int nextRunHours,
             Action<string> log,
             Action<UserSummary> updateUserInfo,
-            Action<int, int> updateTotals,
-            Action<int>? updateCurrentPoints = null)
+            Action<double, int> updateTotals,
+            Action<int>? updateCurrentPoints = null,
+            PurchaseTier purchaseTier = PurchaseTier.Gb100_50000pts,
+            double customUploadGb = -1,
+            bool useMaxAffordable = false)
         {
             try
             {
@@ -186,25 +223,84 @@ namespace MAMAutoPoints
                 }
 
                 // ================= UPLOAD GB =================
-                int actualPurchasedGB = 0;
+                double actualPurchasedGB = 0;
+                int actualPointsSpentGb = 0;
 
-                if (points < MIN_POINTS_FOR_PURCHASE)
+                // Resolve tier or slider value
+                // If customUploadGb is set (>=1) use it; else fall back to PurchaseTier for backward compat
+                bool sliderMode = customUploadGb >= MIN_UPLOAD_GB;
+                double requestedGbFixed = 0;
+                int tierCostFixed = 0;
+                bool isVariable = useMaxAffordable || purchaseTier == PurchaseTier.Variable_MaxAffordable;
+
+                if (!isVariable)
                 {
-                    log($"Not enough points ({points}). Need at least {MIN_POINTS_FOR_PURCHASE} to purchase {GB_PER_BLOCK} GiB");
+                    if (sliderMode)
+                    {
+                        requestedGbFixed = Math.Clamp(customUploadGb, MIN_UPLOAD_GB, MAX_UPLOAD_GB);
+                        tierCostFixed = (int)(requestedGbFixed * POINTS_PER_GB);
+                    }
+                    else
+                    {
+                        var (tierCost, tierGb) = GetTierCostGb(purchaseTier);
+                        requestedGbFixed = tierGb;
+                        tierCostFixed = tierCost;
+                    }
+                }
+
+                if (isVariable)
+                {
+                    // All I can afford with MINIMUM threshold from slider
+                    int cappedPoints = Math.Min(points, MAX_POINTS_CAP);
+                    int availableForSpend = cappedPoints - pointsBuffer;
+                    int maxAffordableGb = availableForSpend / POINTS_PER_GB;
+                    maxAffordableGb = Math.Clamp(maxAffordableGb, 0, MAX_UPLOAD_GB);
+                    int minimumGb = sliderMode ? (int)Math.Clamp(customUploadGb, MIN_UPLOAD_GB, MAX_UPLOAD_GB) : MIN_UPLOAD_GB;
+                    int minimumCost = minimumGb * POINTS_PER_GB;
+                    if (maxAffordableGb < MIN_UPLOAD_GB)
+                    {
+                        log($"Not enough points ({points}) for MAX purchase. Need at least {POINTS_PER_GB + pointsBuffer} (500 pts + {pointsBuffer} buffer) for {MIN_UPLOAD_GB} GiB (cap {MAX_POINTS_CAP} pts)");
+                    }
+                    else if (maxAffordableGb < minimumGb)
+                    {
+                        log($"Not enough points ({points}) for minimum {minimumGb} GiB ({minimumCost} pts + {pointsBuffer} buffer). Max affordable is {maxAffordableGb} GiB — waiting.");
+                    }
+                    else
+                    {
+                        double requestedGbVar = maxAffordableGb;
+                        int costVar = maxAffordableGb * POINTS_PER_GB;
+                        log($"{points} points available (buffer {pointsBuffer}, cap {MAX_POINTS_CAP}, min {minimumGb} GB). Purchasing MAX {requestedGbVar} GiB of upload for {costVar} points");
+
+                        string urlVar = ApiHelper.GetPointsUrl(requestedGbVar);
+                        await ApiHelper.SendCurlRequestAsync(urlVar, cookies);
+
+                        points -= costVar;
+                        actualPurchasedGB = requestedGbVar;
+                        actualPointsSpentGb = costVar;
+                        log($"After purchase, points: {points}");
+                    }
                 }
                 else
                 {
-                    int requestedGB = GB_PER_BLOCK;
-                    log($"{points} points available. Purchasing {requestedGB} GiB of upload for {POINTS_PER_BLOCK} points");
+                    // Fixed slider value: need cost + buffer, capped at 99,999
+                    int cappedPointsForCheck = Math.Min(points, MAX_POINTS_CAP);
+                    int required = tierCostFixed + pointsBuffer;
+                    if (cappedPointsForCheck < required)
+                    {
+                        log($"Not enough points ({points}). Need at least {required} to purchase {requestedGbFixed} GiB ({tierCostFixed} pts + {pointsBuffer} buffer)");
+                    }
+                    else
+                    {
+                        log($"{points} points available. Purchasing {requestedGbFixed} GiB of upload for {tierCostFixed} points");
 
-                    string url = ApiHelper.GetPointsUrl(requestedGB);
-                    await ApiHelper.SendCurlRequestAsync(url, cookies);
+                        string url = ApiHelper.GetPointsUrl(requestedGbFixed);
+                        await ApiHelper.SendCurlRequestAsync(url, cookies);
 
-                    int newPoints = points - POINTS_PER_BLOCK;
-                    log($"After purchase, points: {newPoints}");
-
-                    points = newPoints;
-                    actualPurchasedGB = requestedGB;
+                        points -= tierCostFixed;
+                        actualPurchasedGB = requestedGbFixed;
+                        actualPointsSpentGb = tierCostFixed;
+                        log($"After purchase, points: {points}");
+                    }
                 }
 
                 // ================= TOTALS =================

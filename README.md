@@ -1,10 +1,10 @@
 # MAMAutoPoints
 
 **Original creator:** [Plungis](https://github.com/Plungis)
-**Modified by:** wildfirebill
+**Maintained by:** wildfirebill
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows-blue)](https://github.com/Plungis/MAM-Spender)
+[![Platform](https://img.shields.io/badge/Platform-Windows-blue)](https://github.com/curiousgamez-mam/MAM-Spender)
 [![Language](https://img.shields.io/badge/Language-C%23-green)](https://dotnet.microsoft.com/)
 [![Framework](https://img.shields.io/badge/Framework-.NET%208-purple)](https://dotnet.microsoft.com/)
 
@@ -14,7 +14,7 @@
 
 ## Features
 
-- **Automated Upload Credit Purchases** — Spends 50,000 bonus points for 100 GiB of upload credit when your balance reaches 60,100
+- **Automated Upload Credit Purchases** — Slider sets your minimum upload credit from 1 GiB (500 pts) up to 100 GiB (50,000 pts), or **Variable** mode buys *all you can afford* (capped at 99,999 pts / 199 GiB)
 - **VIP Auto-Renewal** — Optionally purchases VIP membership when your remaining period drops to 83 days or less (unchecked by default)
 - **Freeleech Wedge Support** — Optionally buy FL wedges (50,000 pts) before or instead of upload credit
 - **Points/Min Tracking** — Displays last scan points total and estimates your points-per-minute earning rate across sessions
@@ -23,13 +23,13 @@
 - **System Tray Integration** — Minimizes to tray with background execution
 - **Error Notifications** — Optional balloon tips on automation failures
 - **One-Click Links** — Quick access to MAM Lotto and Millionaires Club from the UI
-- **Self-Contained EXE** — No .NET runtime required; single-file portable executable
+- **Self-Contained EXE** — No .NET runtime required; single-file portable executable, built automatically on every release
 
 ---
 
 ## Download
 
-Grab the latest portable `.exe` from the [Releases page](https://github.com/Plungis/MAMAutoPoints/releases) — no installation or runtime needed.
+Grab the latest portable `.exe` from the [Releases page](https://github.com/curiousgamez-mam/MAM-Spender/releases) — no installation or runtime needed.
 
 ---
 
@@ -37,10 +37,13 @@ Grab the latest portable `.exe` from the [Releases page](https://github.com/Plun
 
 1. The app authenticates using a **mam_id session cookie** tied to your IP address
 2. Every N minutes (default: 15), it fetches your current seed bonus balance from the MAM API
-3. If your balance is ≥ **60,100 points**, it purchases **100 GiB of upload credit** for **50,000 points** (leaving ≥ 10,100 in reserve)
-4. If VIP renewal is enabled and your VIP has ≤ 83 days remaining, it renews first
-5. If FL Wedge mode is enabled, it buys a Freeleech Wedge (50,000 pts) before or instead of upload GB
-6. Results and points/min are logged and displayed in the UI
+3. Depending on the slider setting, it purchases upload credit at the selected tier:
+   - `500 pts -> 1 GB` | `1,250 pts -> 2.5 GB` | `2,500 pts -> 5 GB` | `10,000 pts -> 20 GB` | `25,000 pts -> 50 GB` | `50,000 pts -> 100 GB`
+   - `Variable` -> buys `floor((min(points, 99999) - buffer) / 500)` GB (max 199 GiB)
+4. Purchases trigger when `points >= tierCost + buffer` (fixed) or `points >= 500 + buffer` (Variable)
+5. If VIP renewal is enabled and your VIP has ≤ 83 days remaining, it renews first
+6. If FL Wedge mode is enabled, it buys a Freeleech Wedge (50,000 pts) before or instead of upload GB
+7. Results and points/min are logged and displayed in the UI
 
 ---
 
@@ -60,7 +63,8 @@ Grab the latest portable `.exe` from the [Releases page](https://github.com/Plun
 | Buy Max VIP? | Auto-renew VIP when ≤83 days remain | Off |
 | Buy FL Wedge before GB? | Purchase FL Wedge before upload credit | Off |
 | Buy ONLY Freeleech Wedges | Skip upload credit, only buy FL Wedges | Off |
-| Points Buffer | Minimum reserve; purchase triggers at 60,100 | 10,000 |
+| Min Upload GB (slider) | 1 GB / 2.5 GB / 5 GB / 20 GB / 50 GB / 100 GB / Variable (all you can afford) | 100 GB |
+| Points Buffer | Minimum reserve kept after purchase (e.g. 2.5 GB needs 6,250 pts with 5,000 buffer) | 10,000 |
 | Next Run Delay | Check interval in minutes (min: 3) | 15 |
 
 ### Running
@@ -82,34 +86,26 @@ Click **"Run Script"** to start the scheduled automation. Click **"Run Script Im
 - **Language:** C# (.NET 8, Windows Forms)
 - **HTTP:** `HttpClient` with cookie-based auth
 - **API:** MyAnonAMouse JSON API (`myanonamouse.net`)
-- **Build:** Single-file self-contained publish via `dotnet publish`
+- **Build:** Single-file self-contained publish via `dotnet publish`, automated by GitHub Actions on every release
 
 ---
 
 ## Release Notes
 
-### v2.4.2wfb (current)
-- **Bug fix:** `GetSeedBonusAsync` now uses `?uid=` instead of `?id=` — API was returning wrong points due to incorrect parameter name
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
-### v2.4.1wfb
-- **Bug fix:** Remaining points and points-spent display now calculated correctly after purchase (was showing 0 / full balance due to API returning stale data)
+### v2.4.5wfb (current)
+- **Fix:** "Buy ONLY Freeleech Wedges" checkbox now persists across restarts — it was the only setting missing from the config file save/load logic
 
-### v2.4wfb
-- Branded fork by wildfirebill — credits to original creator Plungis
-- **Purchase logic:** Now buys exactly 100 GiB for 50,000 points when balance reaches 60,100
-- **Timer changed:** Default 15 minutes (was 12 hours), minimum 3 minutes
-- **Added Points/Min tracking:** Shows last scan points and estimated earning rate
-- **VIP default:** Now unchecked by default
+### v2.4.4wfb
+- **Added:** `Save Settings` button — writes all settings to the config file and confirms the saved path
+- **Fix:** Settings now persist correctly — the slider tier was being saved from a stale hidden value and always restored to `100 GB`; it now saves and restores your actual selection
+- **CI:** Workflow actions updated to Node 24-compatible releases (checkout v7, setup-dotnet v6, upload-artifact v7)
 
-### v2.3
-- Original release continues upstream under Plungis
-
-### v2.1
-- Added Play LOTTO Button
-- Added Millionaires Club Button
-- Unified Fixed-Width Layout
-- Added system error notification on failure to run
-- Added Save States for Settings and Cookie
+### v2.4.3wfb
+- **Feature:** Slider `Min Upload GB` with 7 tiers: `500 pts=1 GB` / `1,250=2.5 GB` / `2,500=5 GB` / `10k=20 GB` / `25k=50 GB` / `50k=100 GB` / `Variable=All I can afford` (cap `99,999 pts` = `199 GB` max)
+- **Behavior:** Slider sets minimum upload credit; `Variable` buys `floor((min(points,99999)-buffer)/500)` GB
+- **CI:** GitHub Actions workflow builds the single-file EXE and attaches it to each release
 
 ---
 
